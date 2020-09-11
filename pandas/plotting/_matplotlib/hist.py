@@ -2,9 +2,13 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from pandas import to_datetime
+
 from pandas.core.dtypes.common import is_integer, is_list_like
 from pandas.core.dtypes.generic import ABCDataFrame, ABCIndexClass
 from pandas.core.dtypes.missing import isna, remove_na_arraylike
+
+from pandas.core.series import Series
 
 from pandas.io.formats.printing import pprint_thing
 from pandas.plotting._matplotlib.core import LinePlot, MPLPlot
@@ -29,8 +33,21 @@ class HistPlot(LinePlot):
 
     def _args_adjust(self):
         if is_integer(self.bins):
+            # to deal with datetime columns
+            if type(self.data) == Series and self.data.dtype == np.dtype('<M8[ns]'):
+                temp = self.data.astype('int64')
+
+            else:
+                coltypes = self.data.dtypes
+                dt_int = {}
+                for i in range(len(coltypes)):
+                    if coltypes[i] == np.dtype('<M8[ns]'):
+                        dt_int[coltypes.index[i]] = 'int64'
+
+                temp = self.data.astype(dt_int)
+
             # create common bin edge
-            values = self.data._convert(datetime=True)._get_numeric_data()
+            values = temp._convert(datetime=True)._get_numeric_data()
             values = np.ravel(values)
             values = values[~isna(values)]
 
@@ -417,6 +434,14 @@ def hist_frame(
         if not isinstance(column, (list, np.ndarray, ABCIndexClass)):
             column = [column]
         data = data[column]
+
+    coltypes = data.dtypes
+    dt_int = {}
+    for i in range(len(coltypes)):
+        if coltypes[i] == np.dtype('<M8[ns]'):
+            dt_int[coltypes.index[i]] = 'int64'
+
+    data = data.astype(dt_int)
     data = data._get_numeric_data()
     naxes = len(data.columns)
 
@@ -441,6 +466,12 @@ def hist_frame(
         if legend and can_set_label:
             kwds["label"] = col
         ax.hist(data[col].dropna().values, bins=bins, **kwds)
+        if col in dt_int:
+            xticks = ax.get_xticks().tolist()
+            ax.set_xticks(xticks)
+            xticks = to_datetime(xticks)
+            ax.set_xticklabels(xticks, rotation=-90)
+
         ax.set_title(col)
         ax.grid(grid)
         if legend:
